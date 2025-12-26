@@ -13,18 +13,19 @@ import {
 } from '@utils/template';
 import { replaceVariableSyntax, makeFileName, applyDefaultFrontMatter, toStringFrontMatter } from '@utils/utils';
 
+/* ==================== FANLIB ==================== */
+import { FanlibAPI } from '@apis/fanlib_api';
+/* ================================================= */
+
 export default class BookSearchPlugin extends Plugin {
   settings: BookSearchPluginSettings;
 
   async onload() {
     await this.loadSettings();
 
-    // This creates an icon in the left ribbon.
     const ribbonIconEl = this.addRibbonIcon('book', 'Create new book note', () => this.createNewBookNote());
-    // Perform additional things with the ribbon
     ribbonIconEl.addClass('obsidian-book-search-plugin-ribbon-class');
 
-    // This adds a simple command that can be triggered anywhere
     this.addCommand({
       id: 'open-book-search-modal',
       name: 'Create new book note',
@@ -37,7 +38,6 @@ export default class BookSearchPlugin extends Plugin {
       callback: () => this.insertMetadata(),
     });
 
-    // This adds a settings tab so the user can configure various aspects of the plugin
     this.addSettingTab(new BookSearchSettingTab(this.app, this));
 
     console.log(`Book Search: version ${this.manifest.version} (requires obsidian ${this.manifest.minAppVersion})`);
@@ -54,6 +54,18 @@ export default class BookSearchPlugin extends Plugin {
   // open modal for book search
   async searchBookMetadata(query?: string): Promise<Book> {
     const searchedBooks = await this.openBookSearchModal(query);
+
+    /* ==================== FANLIB ==================== */
+    if (query && /^[0-9Xx\-]+$/.test(query)) {
+      try {
+        const fanlibBooks = await FanlibAPI.searchByISBN(query);
+        searchedBooks.push(...fanlibBooks);
+      } catch (e) {
+        console.warn('Fanlib search failed', e);
+      }
+    }
+    /* ================================================= */
+
     return await this.openBookSuggestModal(searchedBooks);
   }
 
@@ -106,7 +118,6 @@ export default class BookSearchPlugin extends Plugin {
     }
 
     try {
-      // Use Obsidian's requestUrl method to fetch the image data:
       const response = await requestUrl({
         url: imageUrl,
         method: 'GET',
@@ -137,7 +148,6 @@ export default class BookSearchPlugin extends Plugin {
         return;
       }
 
-      // TODO: Try using a search query on the selected text
       const book = await this.searchBookMetadata(markdownView.file.basename);
 
       if (!markdownView.editor) {
@@ -158,13 +168,10 @@ export default class BookSearchPlugin extends Plugin {
       const book = await this.searchBookMetadata();
       const renderedContents = await this.getRenderedContents(book);
 
-      // TODO: If the same file exists, it asks if you want to overwrite it.
-      // create new File
       const fileName = makeFileName(book, this.settings.fileNameFormat);
       const filePath = `${this.settings.folder}/${fileName}`;
       const targetFile = await this.app.vault.create(filePath, renderedContents);
 
-      // if use Templater plugin
       await useTemplaterPluginInFile(this.app, targetFile);
       this.openNewBookNote(targetFile);
     } catch (err) {
@@ -176,7 +183,6 @@ export default class BookSearchPlugin extends Plugin {
   async openNewBookNote(targetFile: TFile) {
     if (!this.settings.openPageOnCompletion) return;
 
-    // open file
     const activeLeaf = this.app.workspace.getLeaf();
     if (!activeLeaf) {
       console.warn('No active leaf');
@@ -185,7 +191,6 @@ export default class BookSearchPlugin extends Plugin {
 
     await activeLeaf.openFile(targetFile, { state: { mode: 'source' } });
     activeLeaf.setEphemeralState({ rename: 'all' });
-    // cursor focus
     await new CursorJumper(this.app).jumpToNextCursorLocation();
   }
 
@@ -213,3 +218,4 @@ export default class BookSearchPlugin extends Plugin {
     await this.saveData(this.settings);
   }
 }
+
